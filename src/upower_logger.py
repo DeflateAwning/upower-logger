@@ -29,6 +29,30 @@ def json_dumps_with_datetime(obj: dict) -> str:
             obj[key] = value.isoformat()
     return json.dumps(obj)
 
+@logger.catch
+def execute_log_event(sqlite_conn_str: str | None = None, json_file_path: str | None = None):
+    upower_output_str = get_upower_output()
+    upower_dict = upower_to_dict(upower_output_str)
+
+    logger.info(f"upower output: {upower_dict}")
+
+    # add extra columns
+    upower_dict['timestamp_utc'] = datetime.datetime.utcnow()
+
+    df = pl.DataFrame([upower_dict])
+
+    if sqlite_conn_str is not None:
+        df.write_database(
+            table_name = 'upower_log',
+            connection = sqlite_conn_str,
+            if_table_exists = 'append',
+            engine = 'sqlalchemy',
+        )
+
+    if json_file_path is not None:
+        with open(json_file_path, 'a') as f:
+            f.write(json_dumps_with_datetime(upower_dict) + '\n')
+
 def main():
     args = parse_args()
 
@@ -52,28 +76,7 @@ def main():
     logger.info('Starting upower logger')
 
     while 1:
-        upower_output_str = get_upower_output()
-        upower_dict = upower_to_dict(upower_output_str)
-
-        logger.info(f"upower output: {upower_dict}")
-
-        # add extra columns
-        upower_dict['timestamp_utc'] = datetime.datetime.utcnow()
-
-        df = pl.DataFrame([upower_dict])
-
-        if sqlite_conn_str is not None:
-            df.write_database(
-                table_name = 'upower_log',
-                connection = sqlite_conn_str,
-                if_table_exists = 'append',
-                engine = 'sqlalchemy',
-            )
-
-        if json_file_path is not None:
-            with open(json_file_path, 'a') as f:
-                f.write(json_dumps_with_datetime(upower_dict) + '\n')
-
+        execute_log_event(args.sqlite_file, args.json_file)
         time.sleep(args.interval)
 
 if __name__ == '__main__':
