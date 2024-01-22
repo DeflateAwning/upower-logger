@@ -9,6 +9,8 @@ def upower_to_dict(upower_cmd_output: str) -> dict:
 
     result = {}
 
+    # TODO: refactor this into a function which operated on single lines to improve testability
+
     # Helper function to update the dictionary with key-value pairs
     def update_dict(key: str, value: str):
         key_out = key.strip().replace(' ', '_').replace('-', '_').lower()
@@ -32,6 +34,15 @@ def upower_to_dict(upower_cmd_output: str) -> dict:
             key_out += '_v'
         elif value_out.endswith(' hours'):
             value_out = float(value_out[:-6].strip())
+            key_out += '_h'
+        elif value_out.endswith(' days'):
+            value_out = float(value_out.rstrip(' days').strip()) * 24
+            key_out += '_h'
+        elif value_out.endswith(' minutes'):
+            value_out = float(value_out[:-8].strip()) / 60
+            key_out += '_h'
+        elif value_out.endswith(' seconds'):
+            value_out = float(value_out[:-8].strip()) / 3600
             key_out += '_h'
         elif key_out.endswith('_charge_cycles'):
             value_out = int(value_out)
