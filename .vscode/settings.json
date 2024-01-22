@@ -3,5 +3,10 @@
         "src/tests"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+
+    // hide __pycache__ folders
+    "files.exclude": {
+        "**/__pycache__": true
+    },
 }

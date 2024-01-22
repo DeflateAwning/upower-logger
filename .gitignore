@@ -1,3 +1,9 @@
+# Project-Specific Files
+upower_logger.json
+upower_logger.log
+upower_logger.sqlite
+# ----------------------
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

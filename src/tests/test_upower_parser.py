@@ -1,6 +1,7 @@
 from src.upower_parser import upower_to_dict
 
 def test_upower_to_dict():
+    # Example command: upower -i /org/freedesktop/UPower/devices/battery_BAT1
     upower_output_1 = """
   native-path:          BAT1
   vendor:               NVT

@@ -3,12 +3,11 @@ import re
 key_value_pattern = re.compile(r'\s*([^:\n]+):\s*([^\n]+)')
 
 def upower_to_dict(upower_cmd_output: str) -> dict:
-    """ Parses the output of the upower command into a dictionary. """
+    """ Parses the output of the upower command into a dictionary.
+    Example command: upower -i /org/freedesktop/UPower/devices/battery_BAT1
+    """
 
-
-    # Initialize variables
     result = {}
-    current_dict = result
 
     # Helper function to update the dictionary with key-value pairs
     def update_dict(key: str, value: str):
@@ -37,7 +36,7 @@ def upower_to_dict(upower_cmd_output: str) -> dict:
         elif key_out.endswith('_charge_cycles'):
             value_out = int(value_out)
             
-        current_dict[key_out] = value_out
+        result[key_out] = value_out
 
     latest_heading: str | None = None
 
@@ -48,6 +47,9 @@ def upower_to_dict(upower_cmd_output: str) -> dict:
         if line.strip() == 'battery':
             latest_heading = 'battery'
             continue
+
+        if line.strip().startswith('History'):
+            break
         
         # Check if it's a key-value pair
         key_value_match = key_value_pattern.match(line)
