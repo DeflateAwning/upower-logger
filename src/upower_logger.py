@@ -6,8 +6,8 @@ import json
 import polars as pl
 import datetime
 import time
-from pathlib import Path
 import sqlite3
+import psutil
 
 from upower_parser import upower_to_dict
 
@@ -23,6 +23,12 @@ def parse_args():
 def get_upower_output() -> str:
     output = subprocess.check_output(['upower', '-i', '/org/freedesktop/UPower/devices/battery_BAT1'])
     return output.decode('utf-8')
+
+def get_system_boot_time_utc() -> datetime.datetime:
+    """ Gets the system's boot time in UTC. """
+    boot_time_seconds = psutil.boot_time()
+    boot_time_utc = datetime.datetime.utcfromtimestamp(boot_time_seconds)
+    return boot_time_utc
 
 def json_dumps_with_datetime(obj: dict) -> str:
     """ Dumps a dictionary to JSON, but converts datetime objects to strings first. """
@@ -63,7 +69,8 @@ def execute_sqlite_ddl(sqlite_file_path: str):
             battery_capacity FLOAT, 
             battery_technology TEXT, 
             battery_icon_name TEXT, 
-            timestamp_utc DATETIME
+            timestamp_utc DATETIME,
+            system_boot_time_utc DATETIME
         );
     """
     
@@ -96,6 +103,7 @@ def execute_log_event(sqlite_file_path: str | None = None, json_file_path: str |
 
     # add extra columns
     upower_dict['timestamp_utc'] = datetime.datetime.utcnow()
+    upower_dict['system_boot_time_utc'] = get_system_boot_time_utc()
 
     # ensure that all columns are present (e.g., when charging, the time-to-empty col isn't present)
     full_col_list: list[str] = []
