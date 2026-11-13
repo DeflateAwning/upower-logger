@@ -8,9 +8,11 @@ import signal
 import sqlite3
 import threading
 import psutil
+from collections.abc import Callable
 
 from upower_logger.parser import upower_to_dict
 from upower_logger.parquet_sink import ParquetSink
+from upower_logger import sysfs_battery
 
 def parse_args():
     parser = ArgumentParser()
@@ -18,13 +20,30 @@ def parse_args():
     parser.add_argument('--json-file', help='Path to JSON file to store dumps in', type=str)
     parser.add_argument('--sqlite-file', help='Path to SQLite database file', type=str)
     parser.add_argument('--parquet-dir', help='Directory for parquet output (hourly partitions, compacted into monthly files)', type=str)
-    parser.add_argument('--interval', dest='interval_sec', help='Interval in seconds between upower calls', type=int, default=60)
+    parser.add_argument('--interval', dest='interval_sec', help='Interval in seconds between readings', type=int, default=60)
+    parser.add_argument('--source', choices=['sysfs', 'upower'], default='sysfs',
+                        help='Where to read battery info: the kernel sysfs interface (works on any Linux distro; default) or the upower CLI')
+    parser.add_argument('--battery', help='Battery name in /sys/class/power_supply, e.g. BAT0 (default: auto-detect)', type=str)
     #parser.add_argument('--debug', action='store_true')
     return parser.parse_args()
 
-def get_upower_output() -> str:
-    output = subprocess.check_output(['upower', '-i', '/org/freedesktop/UPower/devices/battery_BAT1'])
+def get_upower_output(battery_name: str) -> str:
+    output = subprocess.check_output(['upower', '-i', f'/org/freedesktop/UPower/devices/battery_{battery_name}'])
     return output.decode('utf-8')
+
+def make_battery_reader(source: str, battery_name: str | None) -> Callable[[], dict]:
+    """ Resolves the battery once at startup, and returns a function that reads it. """
+    if battery_name is None:
+        battery_name = sysfs_battery.find_battery().name
+        logger.info(f'Auto-detected battery: {battery_name}')
+
+    if source == 'upower':
+        return lambda: upower_to_dict(get_upower_output(battery_name))
+
+    battery_path = sysfs_battery.POWER_SUPPLY_DIR / battery_name
+    if not battery_path.exists():
+        raise FileNotFoundError(f'Battery not found: {battery_path}')
+    return lambda: sysfs_battery.read_battery(battery_path)
 
 def get_system_boot_time_utc() -> datetime.datetime:
     """ Gets the system's boot time in UTC. """
@@ -93,9 +112,8 @@ def execute_log_event_sqlite(sqlite_file_path: str, upower_dict: dict):
     )
 
 @logger.catch
-def execute_log_event(sqlite_file_path: str | None = None, json_file_path: str | None = None, parquet_sink: ParquetSink | None = None):
-    upower_output_str = get_upower_output()
-    upower_dict = upower_to_dict(upower_output_str)
+def execute_log_event(read_battery: Callable[[], dict], sqlite_file_path: str | None = None, json_file_path: str | None = None, parquet_sink: ParquetSink | None = None):
+    upower_dict = read_battery()
 
     # add extra columns
     upower_dict['timestamp_utc'] = datetime.datetime.utcnow()
@@ -107,7 +125,7 @@ def execute_log_event(sqlite_file_path: str | None = None, json_file_path: str |
         if col not in upower_dict.keys():
             upower_dict[col] = None
 
-    logger.info(f"upower output: {upower_dict}")
+    logger.info(f"battery info: {upower_dict}")
 
     if sqlite_file_path is not None:
         execute_log_event_sqlite(sqlite_file_path, upower_dict)
@@ -144,6 +162,9 @@ def main():
         json_file_path = args.json_file
         logger.info(f'Using JSON file at: {json_file_path}')
 
+    read_battery = make_battery_reader(args.source, args.battery)
+    logger.info(f'Reading battery info from: {args.source}')
+
     parquet_sink: ParquetSink | None = None
     if args.parquet_dir is not None:
         parquet_sink = ParquetSink(args.parquet_dir)
@@ -160,7 +181,7 @@ def main():
 
     try:
         while not stop_event.is_set():
-            execute_log_event(args.sqlite_file, args.json_file, parquet_sink)
+            execute_log_event(read_battery, args.sqlite_file, args.json_file, parquet_sink)
             stop_event.wait(args.interval_sec)
     finally:
         if parquet_sink is not None:

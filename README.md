@@ -4,7 +4,9 @@ A time series logger for upower to track a laptop battery's health over the dura
 ## Description
 The main Python script can be started on boot in userspace (no superuser permissions required).
 
-It logs the battery info, provided by the `upower` command, to a SQLite database.
+It logs the battery info (charge, energy, design capacity, health, cycle count, etc.) to Parquet, SQLite, and/or JSON.
+
+Battery info is read directly from the Linux kernel's `/sys/class/power_supply/` interface by default, so it works on any Linux distro without needing the `upower` daemon. Use `--source upower` to read from the `upower` CLI instead; both produce the same columns. The battery is auto-detected (peripheral batteries like wireless mice are skipped), or set it with `--battery BAT0`.
 
 ## Usage
 This project is managed with [uv](https://docs.astral.sh/uv/).
@@ -18,7 +20,7 @@ uv tool install .
 upower-logger --sqlite-file ~/upower_logger.sqlite
 ```
 
-Options: `--parquet-dir`, `--sqlite-file`, `--json-file`, `--log-file`, `--interval` (seconds, default 60).
+Options: `--parquet-dir`, `--sqlite-file`, `--json-file`, `--log-file`, `--interval` (seconds, default 60), `--source` (`sysfs` or `upower`), `--battery` (e.g. `BAT0`).
 
 ## Parquet output
 With `--parquet-dir DIR`, rows are buffered in memory to minimize disk writes:
