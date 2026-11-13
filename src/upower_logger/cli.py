@@ -1,20 +1,23 @@
 from loguru import logger
 from argparse import ArgumentParser
 import subprocess
-import json
+import orjson
 import polars as pl
 import datetime
-import time
+import signal
 import sqlite3
+import threading
 import psutil
 
 from upower_logger.parser import upower_to_dict
+from upower_logger.parquet_sink import ParquetSink
 
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument('--log-file', help='Path to log file', type=str)
     parser.add_argument('--json-file', help='Path to JSON file to store dumps in', type=str)
     parser.add_argument('--sqlite-file', help='Path to SQLite database file', type=str)
+    parser.add_argument('--parquet-dir', help='Directory for parquet output (hourly partitions, compacted into monthly files)', type=str)
     parser.add_argument('--interval', dest='interval_sec', help='Interval in seconds between upower calls', type=int, default=60)
     #parser.add_argument('--debug', action='store_true')
     return parser.parse_args()
@@ -28,13 +31,6 @@ def get_system_boot_time_utc() -> datetime.datetime:
     boot_time_seconds = psutil.boot_time()
     boot_time_utc = datetime.datetime.utcfromtimestamp(boot_time_seconds)
     return boot_time_utc
-
-def json_dumps_with_datetime(obj: dict) -> str:
-    """ Dumps a dictionary to JSON, but converts datetime objects to strings first. """
-    for key, value in obj.items():
-        if isinstance(value, datetime.datetime):
-            obj[key] = value.isoformat()
-    return json.dumps(obj)
 
 def make_sqlite_conn_str(sqlite_file_path: str) -> str:
     # sqlite_conn_str has total 4 slashes for absolute path
@@ -79,8 +75,9 @@ def execute_sqlite_ddl(sqlite_file_path: str):
 
 @logger.catch
 def execute_log_event_json(json_file_path: str, upower_dict: dict):
-    with open(json_file_path, 'a') as f:
-        f.write(json_dumps_with_datetime(upower_dict) + '\n')
+    # orjson serializes datetimes natively (ISO 8601) and never mutates the input dict.
+    with open(json_file_path, 'ab') as f:
+        f.write(orjson.dumps(upower_dict, option=orjson.OPT_APPEND_NEWLINE))
 
 @logger.catch
 def execute_log_event_sqlite(sqlite_file_path: str, upower_dict: dict):
@@ -96,7 +93,7 @@ def execute_log_event_sqlite(sqlite_file_path: str, upower_dict: dict):
     )
 
 @logger.catch
-def execute_log_event(sqlite_file_path: str | None = None, json_file_path: str | None = None):
+def execute_log_event(sqlite_file_path: str | None = None, json_file_path: str | None = None, parquet_sink: ParquetSink | None = None):
     upower_output_str = get_upower_output()
     upower_dict = upower_to_dict(upower_output_str)
 
@@ -118,6 +115,9 @@ def execute_log_event(sqlite_file_path: str | None = None, json_file_path: str |
     if json_file_path is not None:
         execute_log_event_json(json_file_path, upower_dict)
 
+    if parquet_sink is not None:
+        logger.catch(parquet_sink.add)(upower_dict)
+
 def main():
     args = parse_args()
 
@@ -126,8 +126,8 @@ def main():
 
     logger.info(f'Running main() with arguments: {args}')
 
-    if (not args.log_file) and (not args.sqlite_file) and (not args.json_file):
-        logger.warning('No output specified. Logs will only go to stdout. You may want to specify --log-file, --sqlite-file, or --json-file.')
+    if not (args.log_file or args.sqlite_file or args.json_file or args.parquet_dir):
+        logger.warning('No output specified. Logs will only go to stdout. You may want to specify --log-file, --sqlite-file, --json-file, or --parquet-dir.')
     
     if args.log_file is not None:
         logger.add(args.log_file)
@@ -144,11 +144,28 @@ def main():
         json_file_path = args.json_file
         logger.info(f'Using JSON file at: {json_file_path}')
 
+    parquet_sink: ParquetSink | None = None
+    if args.parquet_dir is not None:
+        parquet_sink = ParquetSink(args.parquet_dir)
+
+    # Stop cleanly on SIGTERM (systemctl stop) and SIGINT (Ctrl+C), so buffered data gets written.
+    stop_event = threading.Event()
+    def handle_stop_signal(signum, _frame):
+        logger.info(f'Received {signal.Signals(signum).name}, shutting down')
+        stop_event.set()
+    signal.signal(signal.SIGTERM, handle_stop_signal)
+    signal.signal(signal.SIGINT, handle_stop_signal)
+
     logger.info('Starting upower logger')
 
-    while 1:
-        execute_log_event(args.sqlite_file, args.json_file)
-        time.sleep(args.interval_sec)
+    try:
+        while not stop_event.is_set():
+            execute_log_event(args.sqlite_file, args.json_file, parquet_sink)
+            stop_event.wait(args.interval_sec)
+    finally:
+        if parquet_sink is not None:
+            parquet_sink.close()
+        logger.info('Stopped upower logger')
 
 if __name__ == '__main__':
     main()

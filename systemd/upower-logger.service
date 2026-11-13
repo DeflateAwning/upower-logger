@@ -1,0 +1,16 @@
+[Unit]
+Description=upower battery health logger
+After=default.target
+
+[Service]
+Type=simple
+# Installed via `uv tool install .` (puts the executable in ~/.local/bin).
+ExecStart=%h/.local/bin/upower-logger --parquet-dir %h/.local/share/upower-logger/parquet
+# SIGTERM triggers a clean shutdown that flushes the in-memory buffer and compacts to monthly files.
+KillSignal=SIGTERM
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target

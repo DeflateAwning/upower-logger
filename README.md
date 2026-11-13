@@ -18,7 +18,32 @@ uv tool install .
 upower-logger --sqlite-file ~/upower_logger.sqlite
 ```
 
-Options: `--sqlite-file`, `--json-file`, `--log-file`, `--interval` (seconds, default 60).
+Options: `--parquet-dir`, `--sqlite-file`, `--json-file`, `--log-file`, `--interval` (seconds, default 60).
+
+## Parquet output
+With `--parquet-dir DIR`, rows are buffered in memory to minimize disk writes:
+
+- `DIR/hourly/YYYY-MM-DDTHH.parquet`: written once when each UTC hour ends.
+- `DIR/monthly/YYYY-MM.parquet`: at the end of each UTC day, and on shutdown, the hourly files are merged into their monthly file and deleted.
+
+So the steady state is one parquet file per month. On startup, a leftover file for the current hour (e.g., after a crash) is loaded back into memory, and older leftovers are compacted. Query everything with:
+
+```python
+import polars as pl
+df = pl.read_parquet("DIR/monthly/*.parquet")
+```
+
+## Running as a systemd user service
+```bash
+uv tool install .
+mkdir -p ~/.config/systemd/user
+cp systemd/upower-logger.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now upower-logger
+journalctl --user -u upower-logger -f   # view logs
+```
+
+`systemctl --user stop upower-logger` sends SIGTERM, which flushes the in-memory buffer before exiting. To keep the service running while you are logged out, run `loginctl enable-linger $USER`. After changing the code, run `uv tool install --reinstall .` and restart the service.
 
 ## Development
 ```bash
