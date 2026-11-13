@@ -6,18 +6,18 @@
     "configurations": [
         {
             "name": "Python: Run upower_logger",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/upower_logger.py",
+            "module": "upower_logger",
             "console": "integratedTerminal",
             "justMyCode": true
         },
 
         {
             "name": "Python: Run upower_logger with Log, JSON, and SQLite files",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/upower_logger.py",
+            "module": "upower_logger",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [

@@ -1,0 +1,33 @@
+[project]
+name = "upower-logger"
+version = "0.1.0"
+description = "A time series logger for upower to track a laptop battery's health over the duration of its ownership"
+authors = [
+    { name = "DeflateAwning", email = "11021263+DeflateAwning@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+readme = "README.md"
+license = "Unlicense"
+dependencies = [
+    "loguru>=0.8.0",
+    "pandas>=3.1.1",
+    "polars>=2.0.0",
+    "psutil>=7.2.2",
+    "pyarrow>=26.0.1",
+    "sqlalchemy>2",
+]
+
+[project.scripts]
+upower-logger = "upower_logger.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.7,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

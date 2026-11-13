@@ -1,4 +1,3 @@
-
 from loguru import logger
 from argparse import ArgumentParser
 import subprocess
@@ -9,7 +8,7 @@ import time
 import sqlite3
 import psutil
 
-from upower_parser import upower_to_dict
+from upower_logger.parser import upower_to_dict
 
 def parse_args():
     parser = ArgumentParser()

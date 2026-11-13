@@ -1,4 +1,4 @@
-from src.upower_parser import upower_to_dict
+from upower_logger.parser import upower_to_dict
 
 def test_upower_to_dict():
     # Example command: upower -i /org/freedesktop/UPower/devices/battery_BAT1
